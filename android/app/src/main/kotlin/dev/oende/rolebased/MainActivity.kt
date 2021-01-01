@@ -1,4 +1,4 @@
-package com.example.helloworld_rolebased
+package dev.oende.rolebased
 
 import io.flutter.embedding.android.FlutterActivity
 
