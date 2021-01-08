@@ -1,7 +1,7 @@
 import 'dart:developer';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:helloworld_rolebased/src/pages/DashboardPage.dart';
 
 import 'widgets.dart';
 
@@ -21,6 +21,8 @@ class Authentication extends StatelessWidget {
     @required this.verifyEmail,
     @required this.signIn,
     @required this.signOut,
+    @required this.cancelRegistration,
+    @required this.registerAccount,
   });
 
   final ApplicationLoginState loginState;
@@ -35,46 +37,14 @@ class Authentication extends StatelessWidget {
     String password,
     void Function(Exception e) error,
   ) signIn;
+  final void Function() cancelRegistration;
+  final void Function(
+    String email,
+    String displayName,
+    String password,
+    void Function(Exception e) error,
+  ) registerAccount;
   final void Function() signOut;
-
-  Widget _buildBody(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return LinearProgressIndicator();
-
-        return _buildList(context, snapshot.data.docs);
-      },
-    );
-  }
-
-  Widget _buildList(BuildContext context, List<DocumentSnapshot> snapshot) {
-    return ListView(
-      padding: const EdgeInsets.only(top: 20.0),
-      children: snapshot.map((data) => _buildListItem(context, data)).toList(),
-    );
-  }
-
-  Widget _buildListItem(BuildContext context, DocumentSnapshot data) {
-    final record = Record.fromSnapshot(data);
-
-    return Padding(
-      key: ValueKey(record.name),
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
-          borderRadius: BorderRadius.circular(5.0),
-        ),
-        child: ListTile(
-          title: Text(record.name),
-          trailing: Text(record.votes.toString()),
-          onTap: () =>
-              record.reference.update({'votes': FieldValue.increment(1)}),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,9 +54,11 @@ class Authentication extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Padding(
-              padding: const EdgeInsets.only(top: 100,),
+              padding: const EdgeInsets.only(
+                top: 100,
+              ),
               child: StyledButton(
-                child: Text('RSVP'),
+                child: Text('Login'),
                 onPressed: () {
                   startLoginFlow();
                 },
@@ -106,23 +78,27 @@ class Authentication extends StatelessWidget {
                 (e) => _showErrorDialog(context, 'Failed to sign in', e));
           },
         );
-      case ApplicationLoginState.loggedIn:
-        return Column(
-          children: [
-            Expanded(
-              child: _buildBody(context),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 24, bottom: 8),
-              child: StyledButton(
-                child: Text('LOGOUT'),
-                onPressed: () {
-                  signOut();
-                },
-              ),
-            ),
-          ],
+      case ApplicationLoginState.register:
+        return RegisterForm(
+          email: email,
+          cancel: () {
+            cancelRegistration();
+          },
+          registerAccount: (
+            email,
+            displayName,
+            password,
+          ) {
+            registerAccount(
+                email,
+                displayName,
+                password,
+                (e) =>
+                    _showErrorDialog(context, 'Failed to create account', e));
+          },
         );
+      case ApplicationLoginState.loggedIn:
+        return DashboardPage(signOut: signOut);
       default:
         return Row(
           children: [
@@ -166,24 +142,6 @@ class Authentication extends StatelessWidget {
       },
     );
   }
-}
-
-class Record {
-  final String name;
-  final int votes;
-  final DocumentReference reference;
-
-  Record.fromMap(Map<String, dynamic> map, {this.reference})
-      : assert(map['name'] != null),
-        assert(map['votes'] != null),
-        name = map['name'],
-        votes = map['votes'];
-
-  Record.fromSnapshot(DocumentSnapshot snapshot)
-      : this.fromMap(snapshot.data(), reference: snapshot.reference);
-
-  @override
-  String toString() => "Record<$name:$votes>";
 }
 
 class EmailForm extends StatefulWidget {
@@ -235,12 +193,131 @@ class _EmailFormState extends State<EmailForm> {
                           if (_formKey.currentState.validate()) {
                             widget.callback(_controller.text);
                             log('clicked?');
-                          } 
+                          }
                         },
                         child: Text('NEXT'),
                       ),
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class RegisterForm extends StatefulWidget {
+  RegisterForm({
+    @required this.registerAccount,
+    @required this.cancel,
+    @required this.email,
+  });
+  final String email;
+  final void Function(String email, String displayName, String password)
+      registerAccount;
+  final void Function() cancel;
+  @override
+  _RegisterFormState createState() => _RegisterFormState();
+}
+
+class _RegisterFormState extends State<RegisterForm> {
+  final _formKey = GlobalKey<FormState>(debugLabel: '_RegisterFormState');
+  final _emailController = TextEditingController();
+  final _displayNameController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController.text = widget.email;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Header('Create account'),
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: TextFormField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter your email',
+                    ),
+                    validator: (value) {
+                      if (value.isEmpty) {
+                        return 'Enter your email address to continue';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: TextFormField(
+                    controller: _displayNameController,
+                    decoration: const InputDecoration(
+                      hintText: 'First & last name',
+                    ),
+                    validator: (value) {
+                      if (value.isEmpty) {
+                        return 'Enter your account name';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: TextFormField(
+                    controller: _passwordController,
+                    decoration: const InputDecoration(
+                      hintText: 'Password',
+                    ),
+                    obscureText: true,
+                    validator: (value) {
+                      if (value.isEmpty) {
+                        return 'Enter your password';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: widget.cancel,
+                        child: Text('CANCEL'),
+                      ),
+                      SizedBox(width: 16),
+                      StyledButton(
+                        onPressed: () {
+                          if (_formKey.currentState.validate()) {
+                            widget.registerAccount(
+                              _emailController.text,
+                              _displayNameController.text,
+                              _passwordController.text,
+                            );
+                          }
+                        },
+                        child: Text('SAVE'),
+                      ),
+                      SizedBox(width: 30),
+                    ],
+                  ),
                 ),
               ],
             ),
