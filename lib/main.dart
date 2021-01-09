@@ -164,7 +164,7 @@ class ApplicationState extends ChangeNotifier {
     }
   }
 
-  Future<void> modifyAccount(String displayName, String role,
+  Future<bool> modifyAccount(String displayName, String role,
       void Function(FirebaseAuthException e) errorCallback) async {
     try {
       var credential = FirebaseAuth.instance.currentUser;
@@ -178,9 +178,11 @@ class ApplicationState extends ChangeNotifier {
         "role": role,
         "updated_at": FieldValue.serverTimestamp()
       }, SetOptions(merge: true));
-      errorCallback(FirebaseAuthException(message: 'Hehe'));
+
+      return true;
     } on FirebaseAuthException catch (e) {
       errorCallback(e);
+      return false;
     }
   }
 
