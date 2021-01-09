@@ -1,3 +1,6 @@
+import 'dart:math';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:helloworld_rolebased/src/authentication.dart';
@@ -57,6 +60,7 @@ class _MyHomePageState extends State<MyHomePage> {
           verifyEmail: appState.verifyEmail,
           cancelRegistration: appState.cancelRegistration,
           registerAccount: appState.registerAccount,
+          modifyAccount: appState.modifyAccount,
         ),
       ),
       // floatingActionButton: FloatingActionButton(
@@ -122,19 +126,59 @@ class ApplicationState extends ChangeNotifier {
   void signIn(String email, String password,
       void Function(FirebaseAuthException e) errorCallback) async {
     try {
-      await FirebaseAuth.instance
+      var user = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password);
+
+      print('info user login =>> $user');
+
+      var doc =
+          FirebaseFirestore.instance.collection('users').doc(user.user.uid);
+
+      await doc.set({"created_at": user.user.metadata.creationTime},
+          SetOptions(merge: true));
     } on FirebaseAuthException catch (e) {
       errorCallback(e);
     }
   }
 
   void registerAccount(String email, String displayName, String password,
-      void Function(FirebaseAuthException e) errorCallback) async {
+      String role, void Function(FirebaseAuthException e) errorCallback) async {
     try {
       var credential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
       await credential.user.updateProfile(displayName: displayName);
+
+      var doc = FirebaseFirestore.instance
+          .collection('users')
+          .doc(credential.user.uid);
+
+      await doc.set({
+        "email": email,
+        "name": displayName,
+        "role": role,
+        "votes": Random().nextInt(500) + 150,
+        "created_at": credential.user.metadata.creationTime
+      }, SetOptions(merge: true));
+    } on FirebaseAuthException catch (e) {
+      errorCallback(e);
+    }
+  }
+
+  Future<void> modifyAccount(String displayName, String role,
+      void Function(FirebaseAuthException e) errorCallback) async {
+    try {
+      var credential = FirebaseAuth.instance.currentUser;
+      await credential.updateProfile(displayName: displayName);
+
+      var doc =
+          FirebaseFirestore.instance.collection('users').doc(credential.uid);
+
+      await doc.set({
+        "name": displayName,
+        "role": role,
+        "updated_at": FieldValue.serverTimestamp()
+      }, SetOptions(merge: true));
+      errorCallback(FirebaseAuthException(message: 'Hehe'));
     } on FirebaseAuthException catch (e) {
       errorCallback(e);
     }

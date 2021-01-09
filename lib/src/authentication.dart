@@ -23,6 +23,7 @@ class Authentication extends StatelessWidget {
     @required this.signOut,
     @required this.cancelRegistration,
     @required this.registerAccount,
+    @required this.modifyAccount,
   });
 
   final ApplicationLoginState loginState;
@@ -42,8 +43,14 @@ class Authentication extends StatelessWidget {
     String email,
     String displayName,
     String password,
+    String role,
     void Function(Exception e) error,
   ) registerAccount;
+  final void Function(
+    String displayName,
+    String role,
+    void Function(Exception e) error,
+  ) modifyAccount;
   final void Function() signOut;
 
   @override
@@ -73,6 +80,9 @@ class Authentication extends StatelessWidget {
       case ApplicationLoginState.password:
         return PasswordForm(
           email: email,
+          cancel: () {
+            cancelRegistration();
+          },
           login: (email, password) {
             signIn(email, password,
                 (e) => _showErrorDialog(context, 'Failed to sign in', e));
@@ -88,17 +98,22 @@ class Authentication extends StatelessWidget {
             email,
             displayName,
             password,
+            role,
           ) {
             registerAccount(
-                email,
-                displayName,
-                password,
-                (e) =>
-                    _showErrorDialog(context, 'Failed to create account', e));
+              email,
+              displayName,
+              password,
+              role,
+              (e) => _showErrorDialog(context, 'Failed to create account', e),
+            );
           },
         );
       case ApplicationLoginState.loggedIn:
-        return DashboardPage(signOut: signOut);
+        return DashboardPage(
+          signOut: signOut,
+          modifyAccount: modifyAccount,
+        );
       default:
         return Row(
           children: [
@@ -209,6 +224,13 @@ class _EmailFormState extends State<EmailForm> {
   }
 }
 
+class ListItem {
+  String value;
+  String name;
+
+  ListItem(this.value, this.name);
+}
+
 class RegisterForm extends StatefulWidget {
   RegisterForm({
     @required this.registerAccount,
@@ -216,7 +238,8 @@ class RegisterForm extends StatefulWidget {
     @required this.email,
   });
   final String email;
-  final void Function(String email, String displayName, String password)
+  final void Function(
+          String email, String displayName, String password, String role)
       registerAccount;
   final void Function() cancel;
   @override
@@ -228,11 +251,33 @@ class _RegisterFormState extends State<RegisterForm> {
   final _emailController = TextEditingController();
   final _displayNameController = TextEditingController();
   final _passwordController = TextEditingController();
+  List<ListItem> _dropdownItems = [
+    ListItem("counselor", "Counselor"),
+    ListItem("guest", "Guest"),
+    ListItem("super-admin", "Super Admin"),
+  ];
+  List<DropdownMenuItem<ListItem>> _dropdownMenuItems;
+  ListItem _selectedRole;
+
+  List<DropdownMenuItem<ListItem>> buildDropDownMenuItems(List listItems) {
+    List<DropdownMenuItem<ListItem>> items = List();
+    for (ListItem listItem in listItems) {
+      items.add(
+        DropdownMenuItem(
+          child: Text(listItem.name),
+          value: listItem,
+        ),
+      );
+    }
+    return items;
+  }
 
   @override
   void initState() {
     super.initState();
     _emailController.text = widget.email;
+    _dropdownMenuItems = buildDropDownMenuItems(_dropdownItems);
+    _selectedRole = _dropdownMenuItems[0].value;
   }
 
   @override
@@ -279,6 +324,19 @@ class _RegisterFormState extends State<RegisterForm> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: DropdownButton<ListItem>(
+                    hint: Text('Select Role'),
+                    value: _selectedRole,
+                    items: _dropdownMenuItems,
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedRole = value;
+                      });
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: TextFormField(
                     controller: _passwordController,
                     decoration: const InputDecoration(
@@ -310,6 +368,7 @@ class _RegisterFormState extends State<RegisterForm> {
                               _emailController.text,
                               _displayNameController.text,
                               _passwordController.text,
+                              _selectedRole.value,
                             );
                           }
                         },
@@ -332,9 +391,11 @@ class PasswordForm extends StatefulWidget {
   PasswordForm({
     @required this.login,
     @required this.email,
+    @required this.cancel,
   });
   final String email;
   final void Function(String email, String password) login;
+  final void Function() cancel;
   @override
   _PasswordFormState createState() => _PasswordFormState();
 }
@@ -398,6 +459,10 @@ class _PasswordFormState extends State<PasswordForm> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      TextButton(
+                        onPressed: widget.cancel,
+                        child: Text('CANCEL'),
+                      ),
                       SizedBox(width: 16),
                       StyledButton(
                         onPressed: () {
