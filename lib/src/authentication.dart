@@ -115,11 +115,7 @@ class Authentication extends StatelessWidget {
           modifyAccount: modifyAccount,
         );
       default:
-        return Row(
-          children: [
-            Text("Internal error, this shouldn't happen..."),
-          ],
-        );
+        return Center(child: Text("Internal error, this shouldn't happen..."));
     }
   }
 
