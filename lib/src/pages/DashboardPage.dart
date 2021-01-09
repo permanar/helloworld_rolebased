@@ -1,17 +1,25 @@
 import 'dart:developer';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:dash_chat/dash_chat.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/rendering.dart';
+import 'package:helloworld_rolebased/src/pages/chats/ChatRoom.dart';
 import 'package:helloworld_rolebased/src/widgets.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({
     Key key,
     @required this.signOut,
+    @required this.modifyAccount,
   }) : super(key: key);
 
   final void Function() signOut;
+  final void Function(
+          String displayName, String role, void Function(Exception e) error)
+      modifyAccount;
 
   @override
   _DashboardPageState createState() => _DashboardPageState();
@@ -20,7 +28,10 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   Widget _buildBody(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .orderBy('created_at', descending: false)
+          .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return LinearProgressIndicator();
 
@@ -49,7 +60,24 @@ class _DashboardPageState extends State<DashboardPage> {
           borderRadius: BorderRadius.circular(5.0),
         ),
         child: ListTile(
-          title: Text(record.name),
+          title: RichText(
+            text: TextSpan(
+              style: TextStyle(
+                fontSize: 16.0,
+                color: Colors.black,
+              ),
+              children: <TextSpan>[
+                TextSpan(text: record.name),
+                TextSpan(
+                  text: "\n<${record.email}>",
+                  style: TextStyle(
+                    fontSize: 14.0,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
           trailing: Text(record.votes.toString()),
           onTap: () =>
               record.reference.update({'votes': FieldValue.increment(1)}),
@@ -65,11 +93,9 @@ class _DashboardPageState extends State<DashboardPage> {
     List<Widget> _widgetOptions = <Widget>[
       homeContent(context),
       ChatContent(context: context),
-      Container(
-        color: Colors.green,
-        child: Center(child: Text("put them in the _widgetOption list")),
-        constraints: BoxConstraints.expand(),
-      )
+      ProfileContent(
+        modifyAccount: widget.modifyAccount,
+      ),
     ];
 
     return Scaffold(
@@ -106,7 +132,6 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Column(
         children: [
           SizedBox(
-            height: 200,
             child: ListView(
               shrinkWrap: true,
               children: [
@@ -129,6 +154,219 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class ListItem {
+  String value;
+  String name;
+
+  ListItem(this.value, this.name);
+}
+
+class ProfileContent extends StatefulWidget {
+  const ProfileContent({
+    Key key,
+    @required this.modifyAccount,
+  }) : super(key: key);
+
+  final void Function(
+    String displayName,
+    String role,
+    void Function(Exception e) error,
+  ) modifyAccount;
+
+  @override
+  _ProfileContentState createState() => _ProfileContentState();
+}
+
+class _ProfileContentState extends State<ProfileContent> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _displayNameController = TextEditingController();
+  List<ListItem> _dropdownItems = [
+    ListItem("counselor", "Counselor"),
+    ListItem("guest", "Guest"),
+    ListItem("super-admin", "Super Admin"),
+  ];
+  List<DropdownMenuItem<ListItem>> _dropdownMenuItems;
+  ListItem _selectedRole;
+  bool _loading = false;
+
+  List<DropdownMenuItem<ListItem>> buildDropDownMenuItems(List listItems) {
+    List<DropdownMenuItem<ListItem>> items = List();
+    for (ListItem listItem in listItems) {
+      items.add(
+        DropdownMenuItem(
+          child: Text(listItem.name),
+          value: listItem,
+        ),
+      );
+    }
+    return items;
+  }
+
+  void _showErrorDialog(BuildContext context, String title, Exception e) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            title,
+            style: TextStyle(fontSize: 24),
+          ),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text(
+                  '${(e as dynamic).message}',
+                  style: TextStyle(fontSize: 18),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            StyledButton(
+              child: Text(
+                'OK',
+                style: TextStyle(color: Colors.deepPurple),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(FirebaseAuth.instance.currentUser.uid)
+        .snapshots()
+        .listen((event) {
+      _emailController.text = event.get('email');
+      _displayNameController.text = event.get('name');
+    });
+    _dropdownMenuItems = buildDropDownMenuItems(_dropdownItems);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        Padding(
+          padding: EdgeInsets.only(left: 20, top: 20, bottom: 20),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Manage Profile',
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: TextFormField(
+                  controller: _emailController,
+                  readOnly: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Change your email',
+                  ),
+                  validator: (value) {
+                    if (value.isEmpty) {
+                      return 'Enter your email address to continue';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: TextFormField(
+                  controller: _displayNameController,
+                  decoration: const InputDecoration(
+                    hintText: 'Change your name',
+                  ),
+                  validator: (value) {
+                    if (value.isEmpty) {
+                      return 'Enter your account name';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: DropdownButtonFormField<ListItem>(
+                  hint: Text('Select Role'),
+                  value: _selectedRole,
+                  items: _dropdownMenuItems,
+                  validator: (value) {
+                    if (value == null) {
+                      return 'Please choose one role';
+                    }
+                    return null;
+                  },
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedRole = value;
+                    });
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    SizedBox(width: 16),
+                    StyledButton(
+                      onPressed: () {
+                        setState(() {
+                          _loading = true;
+                        });
+                        if (_formKey.currentState.validate()) {
+                          widget.modifyAccount(
+                            _displayNameController.text,
+                            _selectedRole.value,
+                            (e) => _showErrorDialog(
+                                context, 'Failed to save the changes', e),
+                          );
+                        }
+                        setState(() {
+                          _loading = false;
+                        });
+                      },
+                      child: _loading
+                          ? Container(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(),
+                            )
+                          : Text("Save Changes"),
+                    ),
+                    SizedBox(width: 30),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -165,14 +403,17 @@ class ChatContent extends StatelessWidget {
               children: <Widget>[
                 Expanded(
                   child: Text(
-                    'Messages',
+                    'Please choose your conselor',
                     style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
                   ),
                 ),
                 InkWell(
+                  borderRadius: BorderRadius.circular(30),
                   onTap: () {},
                   child: Padding(
-                      padding: EdgeInsets.all(20.0), child: Icon(Icons.search)),
+                    padding: EdgeInsets.all(15.0),
+                    child: Icon(Icons.search),
+                  ),
                 )
               ],
             ),
@@ -229,7 +470,14 @@ class _ChatItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {},
+      onTap: () {
+        Navigator.push(
+          context,
+          CupertinoPageRoute(
+            builder: (context) => ChatRoom(),
+          ),
+        );
+      },
       child: Padding(
         padding: EdgeInsets.all(20),
         child: Row(
@@ -255,8 +503,8 @@ class _ChatItem extends StatelessWidget {
                       print('yuhuuu =>> ${user.currentUser.uid}');
                       print('doc nya oyy =>> ${doc}');
 
-                      // cancel subsscription when no longer needed
-                      doc.cancel();
+                      // we need to cancel subsscription when no longer needed
+                      // doc.cancel();
                     },
                     child: CircleAvatar(
                       backgroundImage: NetworkImage(this.imgURL),
@@ -353,13 +601,19 @@ class _UnreadIndicator extends StatelessWidget {
 class Record {
   final String name;
   final int votes;
+  final String email;
+  final String role;
   final DocumentReference reference;
 
   Record.fromMap(Map<String, dynamic> map, {this.reference})
       : assert(map['name'] != null),
         assert(map['votes'] != null),
+        assert(map['email'] != null),
+        assert(map['role'] != null),
         name = map['name'],
-        votes = map['votes'];
+        votes = map['votes'],
+        email = map['email'],
+        role = map['role'];
 
   Record.fromSnapshot(DocumentSnapshot snapshot)
       : this.fromMap(snapshot.data(), reference: snapshot.reference);
